@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.28;
 
 
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
@@ -42,6 +42,7 @@ contract LBP{
     event DepositedCollateral(address indexed user, uint256 amount);
     event Borrowed(address indexed user, uint256 amount);
     event Repaid(address indexed user, uint256 amount);
+    event Liquidated(address indexed user);
 
     modifier onlyLender() {
     	require(users[msg.sender].isLender, "Not a lender");
@@ -140,6 +141,12 @@ contract LBP{
         if(users[user].collateral<users[user].borrowedB*100/COLLATERAL_RATIO){
             revert CollateralRatioMaintained();
         }
+
+        uint256 collateralToSeize=users[user].collateral;
+        tokenA.transfer(msg.sender,collateralToSeize);
+        users[user].collateral = 0;
+        users[user].borrowedB = 0;
+        emit Liquidated(user);
     }
 
 
