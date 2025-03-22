@@ -2,9 +2,22 @@
 pragma solidity ^0.8.28;
 
 
-import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {AggregatorV3Interface} from "../lib/chainlink-brownie-contracts/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
+contract LPToken is ERC20 {
+    constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
+
+    function mint(address user, uint256 lpTokens) external {
+        _mint(user, lpTokens);
+    }
+
+    function burn(address user, uint256 amount) external{
+        _burn(user, amount);
+}
+
+}
 
 contract LBP{
     
@@ -60,7 +73,7 @@ contract LBP{
         lpToken = new LPToken("LP Token","LPT");
     }
 
-    function registerUser(address user,bool isLender){
+    function RegisterUser(address user,bool isLender) public {
         if(users[user].depositedA>0 || users[user].collateral>0){
             revert UserAlreadyRegistered();
         }
@@ -75,7 +88,9 @@ contract LBP{
         users[user].depositedA += amount;
         totalA += amount;
 
-        uint256 lpTokens = amount*totalLPTokens/totalA;
+        uint256 lpTokens;
+        if (totalLPTokens ==0){lpTokens=amount;}
+        else{(lpTokens = (amount*totalLPTokens)/totalA);}
         lpToken.mint(user,lpTokens);
         totalLPTokens += lpTokens;
 
@@ -86,20 +101,20 @@ contract LBP{
     function withdrawA(address user,uint256 amount) external onlyLender{
         if(users[user].depositedA<amount){revert InsufficientBalance();}
 
-        uint256 lpTokens = amount*totalLPTokens/totalA;
+        uint256 lpTokens = (amount*totalLPTokens)/totalA;
         lpToken.burn(user,lpTokens);
         totalLPTokens -= lpTokens;
 
-        uint256 interest=calcIntersert(user);
+        uint256 interest=calcInterest(user);
         totalA-=amount;
         users[user].depositedA -= amount;
         tokenA.transfer(user,amount+interest);
         emit Withdrawn(user,amount);
     }
 
-    function calcIntersert(address user){
+    function calcInterest(address user) public view returns (uint256 interest){
         uint256 timePassed = block.timestamp - users[user].lastTransactionTime;
-        uint256 interest = users[user].depositedA*BASE_INTEREST_RATE*timePassed/100;
+        interest = users[user].depositedA*BASE_INTEREST_RATE*timePassed/(100);
         return interest;
     }
     
@@ -124,7 +139,7 @@ contract LBP{
 
     function repayB(address user,uint256 amount)external onlyBorrower{
         if(users[user].borrowedB<amount){revert ExceedsDebt();}
-        uint256 interest=calcIntersert(user);
+        uint256 interest=calcInterest(user);
         tokenB.transferFrom(user,address(this),amount+interest);
         users[user].borrowedB -= amount;
 
@@ -137,7 +152,7 @@ contract LBP{
         emit Repaid(user,amount);
     }
 
-    function liquidate(address user){
+    function liquidate(address user) public {
         if(users[user].collateral<users[user].borrowedB*100/COLLATERAL_RATIO){
             revert CollateralRatioMaintained();
         }
